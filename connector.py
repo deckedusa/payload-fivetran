@@ -115,8 +115,14 @@ def sync_collection(collection, base_url, headers, state, group_fields):
 
 
 def schema(configuration: dict):
-    # Option C: let Fivetran infer schema from the data
-    return []
+    collections = configuration.get(COLLECTIONS_KEY, "").split(",")
+    return [
+        {
+            "table": collection.strip(),
+            "primary_key": ["id"]
+        }
+        for collection in collections
+    ]
 
 
 def update(configuration: dict, state: dict):

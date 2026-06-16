@@ -100,6 +100,81 @@ This produces a `connector.zip` you can upload via the Fivetran UI.
 
 Fivetran will run an initial full sync on first connection. Subsequent syncs are incremental — only records updated since the last sync are fetched.
 
+## Custom `/api/schema` endpoint
+
+The connector fetches `GET /api/schema` from your Payload instance to determine which fields are typed as `group` — this is what enables the `fieldName_subField` flattening behaviour. **This endpoint is not built into Payload** and must be implemented in your Payload project.
+
+If the endpoint is missing or returns an error, the connector logs a warning and continues — but group fields will **not** be flattened and will instead land in your warehouse as raw JSON objects. The sync itself will not fail.
+
+### What the endpoint must return
+
+```json
+{
+  "collections": {
+    "products": {
+      "fields": {
+        "technicalInfo": { "type": "group" },
+        "price":         { "type": "number" },
+        "title":         { "type": "text" }
+      }
+    },
+    "categories": {
+      "fields": {
+        "meta": { "type": "group" }
+      }
+    }
+  }
+}
+```
+
+Only `group`-typed fields affect connector behaviour — you can omit other field types or include them, either works.
+
+### Example Payload endpoint (TypeScript)
+
+```ts
+// src/endpoints/schema.ts  (add to your Payload config under `endpoints`)
+import type { Endpoint } from 'payload'
+
+export const schemaEndpoint: Endpoint = {
+  path: '/schema',
+  method: 'get',
+  handler: async (req) => {
+    const { payload } = req
+
+    const collections: Record<string, { fields: Record<string, { type: string }> }> = {}
+
+    for (const collection of payload.config.collections) {
+      const fields: Record<string, { type: string }> = {}
+
+      for (const field of collection.fields) {
+        // named fields only — unnamed UI fields (rows, collapsibles) have no DB column
+        if ('name' in field && field.name) {
+          fields[field.name] = { type: field.type }
+        }
+      }
+
+      collections[collection.slug] = { fields }
+    }
+
+    return Response.json({ collections })
+  },
+}
+```
+
+Register it in your Payload config:
+
+```ts
+// payload.config.ts
+import { schemaEndpoint } from './endpoints/schema'
+
+export default buildConfig({
+  // ...
+  endpoints: [schemaEndpoint],
+})
+```
+
+The endpoint does not need authentication — it only exposes field type metadata, not document data. If you prefer to lock it down, the connector sends the same `Authorization` header used for collection requests, so you can verify it using Payload's standard API key middleware.
+
 ## Schema handling
 
 Payload field types map to warehouse types as follows:
@@ -112,6 +187,7 @@ Payload field types map to warehouse types as follows:
 | `checkbox` | Boolean column |
 | `relationship` (single) | String column (the related document's ID) |
 | `relationship` (hasMany) | VARIANT — array of IDs |
+| `join` | VARIANT — array of IDs |
 | `upload` | String column (the related media document's ID) |
 | `group` | Flattened into `fieldName_subField` columns |
 | `json` | VARIANT |
