@@ -1,4 +1,6 @@
-*.local.json
+configuration.json
+configuration*.json
+!configuration.example.json
 
 myenv
 files
