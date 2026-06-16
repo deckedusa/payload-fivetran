@@ -1,0 +1,6 @@
+{
+  "payload_url": "https://your-payload-instance.com",
+  "api_key": "YOUR_API_KEY_HERE",
+  "collections": "categories,products,variants,attributes",
+  "users_collection": "users"
+}
